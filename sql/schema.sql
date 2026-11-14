@@ -34,7 +34,7 @@ CREATE TABLE Dim_Date (
     month_number INT NOT NULL,
     month_name VARCHAR(20),
     day_of_week VARCHAR(20),
-    IS_WEEKEND BOOLEAN
+    is_weekend BOOLEAN
 );
 
 CREATE TABLE Fact_Transactions (
@@ -45,7 +45,7 @@ CREATE TABLE Fact_Transactions (
     transaction_date DATE NOT NULL,
     transaction_type VARCHAR(50) NOT NULL,
     amount_usd DECIMAL(15,2) NOT NULL,
-    fee_genereted_usd DECIMAL(15,2) NOT NULL,
+    fee_generated_usd DECIMAL(15,2) NOT NULL,
 
     FOREIGN KEY (client_id) REFERENCES Dim_Clients(client_id),
     FOREIGN KEY (advisor_id) REFERENCES Dim_Advisors(advisor_id),
