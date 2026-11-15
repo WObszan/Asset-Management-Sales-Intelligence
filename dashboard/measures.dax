@@ -1,0 +1,153 @@
+// =====================================================================
+// DAX measures for the AM Sales Intelligence dashboard
+// How to use: Home > Enter data > create an empty table named "_Measures"
+// (one dummy column, delete it later), then for each block below:
+// select _Measures > New measure > paste the block (name = expression).
+// Suggested format is in the comment above each measure.
+// Model assumptions (relationships, all many-to-one, single direction):
+//   Fact_Transactions[transaction_date]   -> Dim_Date[date_id]
+//   Fact_Positions_Monthly[month_end]     -> Dim_Date[date_id]
+//   Fact_Transactions / Fact_Positions_Monthly [client_id]  -> Dim_Clients[client_id]
+//   Fact_Transactions / Fact_Positions_Monthly [fund_id]    -> Dim_Funds[fund_id]
+//   Fact_Transactions / Fact_Positions_Monthly [advisor_id] -> Dim_Advisors[advisor_id]
+//   Dim_Advisor_Targets[advisor_id]       -> Dim_Advisors[advisor_id]
+//   (NO relationship Dim_Clients -> Dim_Advisors; NO relationship Dim_Advisor_Targets -> Dim_Date)
+//   Dim_Date marked as date table on Dim_Date[date_id].
+// =====================================================================
+
+
+// ---------- Flows (from transactions) ----------
+
+// Format: Currency, $ millions  ->  \$#,0.0,,"M"
+Gross Sales =
+CALCULATE (
+    SUM ( Fact_Transactions[amount_usd] ),
+    Fact_Transactions[transaction_type] = "Subscription"
+)
+
+// Format: \$#,0.0,,"M"
+Redemptions =
+CALCULATE (
+    SUM ( Fact_Transactions[amount_usd] ),
+    Fact_Transactions[transaction_type] = "Redemption"
+)
+
+// Format: \$#,0.0,,"M"
+Net Flows = [Gross Sales] - [Redemptions]
+
+// Format: 0.0%
+Net Flows YoY % =
+VAR PrevYear = CALCULATE ( [Net Flows], SAMEPERIODLASTYEAR ( Dim_Date[date_id] ) )
+RETURN DIVIDE ( [Net Flows] - PrevYear, ABS ( PrevYear ) )
+
+
+// ---------- AUM and fees (from month-end positions) ----------
+
+// AUM at the end of the selected period. Format: \$#,0.0,,"M"
+AUM =
+VAR MonthEnd = EOMONTH ( MAX ( Dim_Date[date_id] ), 0 )
+RETURN
+    CALCULATE ( SUM ( Fact_Positions_Monthly[aum_usd] ), Dim_Date[date_id] = MonthEnd )
+
+// AUM at the end of the month BEFORE the selected period starts. Format: \$#,0.0,,"M"
+AUM Start of Period =
+VAR PrevMonthEnd = EOMONTH ( MIN ( Dim_Date[date_id] ), -1 )
+RETURN
+    CALCULATE (
+        SUM ( Fact_Positions_Monthly[aum_usd] ),
+        REMOVEFILTERS ( Dim_Date ),
+        Dim_Date[date_id] = PrevMonthEnd
+    )
+
+// Change in AUM not explained by flows = fund performance. Format: \$#,0.0,,"M"
+Market Performance = [AUM] - [AUM Start of Period] - [Net Flows]
+
+// Net flows as % of starting AUM. Format: 0.0%
+Organic Growth % = DIVIDE ( [Net Flows], [AUM Start of Period] )
+
+// Management fees earned in the period (avg AUM x bps / 12 per month). Format: \$#,0.0,,"M"
+Fee Revenue = SUM ( Fact_Positions_Monthly[fee_usd] )
+
+// AUM-weighted management fee. Format: 0.0 " bps"
+Fee Margin (bps) =
+DIVIDE (
+    SUMX (
+        Fact_Positions_Monthly,
+        Fact_Positions_Monthly[aum_usd] * RELATED ( Dim_Funds[management_fee_bps] )
+    ),
+    SUM ( Fact_Positions_Monthly[aum_usd] )
+)
+
+
+// ---------- Advisors and targets ----------
+
+// Yearly gross-sales targets for the selected years. Format: \$#,0.0,,"M"
+Target =
+CALCULATE (
+    SUM ( Dim_Advisor_Targets[target_usd] ),
+    TREATAS ( VALUES ( Dim_Date[year] ), Dim_Advisor_Targets[year] )
+)
+
+// Format: 0%
+Quota Attainment % = DIVIDE ( [Gross Sales], [Target] )
+
+// Format: 0
+Advisors at or above Target =
+COUNTROWS (
+    FILTER ( VALUES ( Dim_Advisors[advisor_id] ), [Quota Attainment %] >= 1 )
+)
+
+// Format: 0%
+Share of Advisors on Target =
+DIVIDE ( [Advisors at or above Target], DISTINCTCOUNT ( Dim_Advisor_Targets[advisor_id] ) )
+
+
+// ---------- Retention (status is computed as of the last month in the data) ----------
+
+// Format: \$#,0.0,,"M"
+AUM at Risk =
+VAR LastMonthEnd = CALCULATE ( MAX ( Fact_Positions_Monthly[month_end] ), REMOVEFILTERS () )
+RETURN
+    CALCULATE (
+        SUM ( Fact_Positions_Monthly[aum_usd] ),
+        REMOVEFILTERS ( Dim_Date ),
+        Fact_Positions_Monthly[month_end] = LastMonthEnd,
+        Dim_Clients[retention_status] IN { "High Risk", "Watchlist" }
+    )
+
+// Yearly management fees that would be lost if at-risk clients leave. Format: \$#,0.0,,"M"
+Annual Fees at Risk =
+VAR LastMonthEnd = CALCULATE ( MAX ( Fact_Positions_Monthly[month_end] ), REMOVEFILTERS () )
+RETURN
+    CALCULATE (
+        SUMX (
+            Fact_Positions_Monthly,
+            Fact_Positions_Monthly[aum_usd] * RELATED ( Dim_Funds[management_fee_bps] ) / 10000
+        ),
+        REMOVEFILTERS ( Dim_Date ),
+        Fact_Positions_Monthly[month_end] = LastMonthEnd,
+        Dim_Clients[retention_status] IN { "High Risk", "Watchlist" }
+    )
+
+// Format: 0
+Clients at Risk =
+CALCULATE ( COUNTROWS ( Dim_Clients ), Dim_Clients[retention_status] IN { "High Risk", "Watchlist" } )
+
+// Format: 0
+Clients Lost (12m) =
+CALCULATE ( COUNTROWS ( Dim_Clients ), Dim_Clients[retention_status] = "Lost" )
+
+// Peak AUM of clients who already left in the last 12 months. Format: \$#,0.0,,"M"
+AUM Lost (12m) =
+CALCULATE ( SUM ( Dim_Clients[peak_aum_12m_usd] ), Dim_Clients[retention_status] = "Lost" )
+
+// Share of current AUM that is at risk. Format: 0.0%
+AUM at Risk % =
+VAR LastMonthEnd = CALCULATE ( MAX ( Fact_Positions_Monthly[month_end] ), REMOVEFILTERS () )
+VAR TotalNow =
+    CALCULATE (
+        SUM ( Fact_Positions_Monthly[aum_usd] ),
+        REMOVEFILTERS ( Dim_Date ),
+        Fact_Positions_Monthly[month_end] = LastMonthEnd
+    )
+RETURN DIVIDE ( [AUM at Risk], TotalNow )

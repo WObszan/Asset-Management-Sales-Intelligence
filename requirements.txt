@@ -1,0 +1,6 @@
+pandas==3.1.1
+numpy==2.2.6
+faker==40.54.0
+SQLAlchemy==2.1.8
+PyMySQL==1.2.4
+pytest==9.1.1
