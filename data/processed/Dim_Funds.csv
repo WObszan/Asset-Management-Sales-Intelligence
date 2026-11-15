@@ -1,0 +1,11 @@
+fund_id,fund_name,ticker,asset_class,management_fee_bps,fund_risk_level
+1,Global Equity Alpha Fund,GEAF,Equity,125,6
+2,US Tech & Innovation Equity,UTIE,Equity,140,7
+3,European Sustainable Leaders,EUSL,Equity,115,5
+4,Global Sovereign Bond Fund,GSBF,Fixed Income,45,2
+5,US Investment Grade Credit,USIG,Fixed Income,55,3
+6,Euro High Yield Bond,EHYB,Fixed Income,75,4
+7,Balanced Global Multi-Asset,BGMA,Multi-Asset,95,4
+8,Conservative Income Strategy,CINS,Multi-Asset,80,3
+9,Global Real Estate & Infrastructure,GREI,Alternatives,175,6
+10,Private Credit Opportunities,PCOP,Alternatives,190,7
