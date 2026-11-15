@@ -23,11 +23,11 @@ The project answers three questions for sales management:
 ```mermaid
 flowchart LR
     G[generate_data.py<br/>synthetic clients, flows,<br/>fund returns, positions] --> R[(data/raw)]
-    G -. --load-mysql .-> DB[(MySQL sales_db<br/>star schema)]
+    G -.->|"--load-mysql"| DB[(MySQL sales_db<br/>star schema)]
     DB --> V[SQL views<br/>sales, quota, churn signals]
     R --> C[churn_rules.py<br/>churn signals + evaluation]
     C --> P[(data/processed<br/>star schema CSVs)]
-    V -. export_to_csv.py .-> P
+    V -.->|"export_to_csv.py"| P
     P --> BI[Power BI<br/>DAX measures, 3 report pages]
 ```
 
